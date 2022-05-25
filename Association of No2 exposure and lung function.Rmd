@@ -1,0 +1,114 @@
+---
+title: "No2 exposure in Children with Asthma"
+author: "Thuy Nguyen"
+date: "4/21/2022"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r, warning=FALSE, message=FALSE}
+library(lattice)
+library(psych)
+library(data.table)
+library(reshape2)
+library(ggplot2)
+library(tidyr)
+library(dplyr)
+library(dplyr)
+library(kableExtra)
+library(corrplot)
+library(nlme)
+library(geepack)
+library(multcomp)
+```
+
+
+```{r}
+# Exploratory data
+
+asth<- read.csv("AsthmaNO2.csv")
+asth <- asth[, !(names(asth) %in% c("X","asthma"))] 
+asth$no2high <- as.factor(asth$no2high)
+
+# create age at baseline
+asth$age_base <- rep(0, nrow(asth))
+
+for (i in unique(asth$id)){
+  asth$age_base[asth$id ==i]<- min(asth$age[asth$id==i])
+} 
+
+# create times of measurements
+asth$time <- round(asth$age - asth$age_base,0)
+# create age since entry
+asth$dage <- asth$age - asth$age_base
+# create height at baseline
+asth$baseheight <- rep(0, nrow(asth))
+for (i in unique(asth$id)){
+  asth$baseheight[asth$id ==i]<- min(asth$height[asth$id==i])
+} 
+# create height since entry
+ asth$dheight <- asth$height - asth$baseheight
+ 
+```
+# Exploratory data
+
+```{r}
+# Missing: yes
+ast_wide <- reshape(asth[, c("id", "fev1", "time")], direction = "wide", id = "time", idvar = "id")
+nrow(ast_wide[!complete.cases(ast_wide),])
+
+# Summary data
+asth$age_cut <- cut(asth$age, breaks = c(8.5,10.5,12.5,14.5,16.5,18.5), include.lowest = T)
+
+asth$height_cut <- cut(asth$height, breaks = c(124,138,152,166,180,194), include.lowest = T)
+
+
+
+asth %>%  group_by(no2high, age_cut) %>% summarise(fev_h = mean(fev1), sd_h = sd(fev1))
+
+asth %>%  group_by(no2high, height_cut) %>% summarise(fev_h = mean(fev1), sd_h = sd(fev1))
+asth %>%  group_by( age_cut) %>% summarise(fev_h = mean(fev1), sd_h = sd(fev1))
+asth %>%  group_by(height_cut) %>% summarise(fev_h = mean(fev1), sd_h = sd(fev1))
+
+```
+
+```{r, warning=FALSE, message=FALSE}
+color <- c("blue", "red")
+par(mfrow=c(1,2))
+ggplot(data =asth, aes((age),(fev1),col = no2high))+geom_point() + geom_smooth() + scale_color_manual(values = color) + ylab("FEV(ml)") + xlab("Age (years)") +ggtitle("Scatter plot of FEV vs Age")
+
+ggplot(data =asth, aes((height), (fev1),col = no2high))+geom_point() + geom_smooth(se = F)+ scale_color_manual(values = color) + ylab("FEV(ml)") + xlab("Height (cm)") + ggtitle("Scatter Plot of log(FEV) vs Height")
+
+cor_mat_g1 <- cor(ast_wide[, c("fev1.0","fev1.1", "fev1.2", "fev1.3","fev1.4")],use = "complete.obs")
+
+corrplot(cor_mat_g1, method = "color", type = "lower", addCoef.col = "yellow" , title  = " Empirical correlation matrix among group 1", mar=c(0,0,1,0))
+```
+
+
+```{r}
+
+
+# mod2
+asth$ageb <- asth$age- asth$age_base
+
+mod2 <-geeglm((fev1)~  (dheight)*no2high, data= asth, id = id, corstr = "ar1")
+anova(mod2)
+summary(mod2)
+
+asth_g1 <- glht(mod2, linfct = c("dheight + dheight:no2high1 = 0"))
+confint(asth_g1)
+
+asth<- asth[order(asth$id, asth$age),]
+mod1 <-geeglm((fev1)~ (dage)*no2high, data= asth, id = id, corstr = "ar1")
+summary(mod1)
+anova(mod1)
+asth_g2 <- glht(mod1, linfct = c("dage + dage:no2high1 = 0"))
+confint(asth_g2)
+
+summary(geeglm((fev1)~  dheight *no2high, data= asth, id = id, corstr ="ar1"))
+
+```
+
