@@ -1,7 +1,7 @@
 
 library(reshape2)
 library(ggplot2)
-#library(tidyr)
+
 library(dplyr)
 library(corrplot)
 library(nlme)
@@ -148,23 +148,28 @@ aggr_plot <- aggr(asth_wide, numbers = T, gap = 2,
 mtext("Figure 4: Pattern of missing data", side =1, line = 7, outer= T )
 
 ## impute data using MICE package
+### create a predictor matrix
+### which indicates variables we want to use in the imputation model
 pred_long <- make.predictorMatrix(asth)
 pred_long["fev1","id"] <- -2
-imp_long <- mice(asth, method ="2l.pan", 
+imp_long <- mice(asth, method ="norm", 
                  pred = pred_long, seed = 3003,
                  maxit = 5, m =50, print = F)
 fit.imp_long <- with(imp_long,
                      geeglm(log(fev1) ~ age* no2high + height + male,
                             id = id,
                             family = "gaussian"))
+## pool the imputed
 mod_imp_long <- pool(fit.imp_long)
-summary(mod_imp_long) %>% str()
+
+## compute 95 % CI of estimated coefficients
 low_ci <- round(summary(mod_imp_long)$estimate -1.96 * summary(mod_imp_long)$std.error,4)
 high_ci <- round(summary(mod_imp_long)$estimate +1.96 * summary(mod_imp_long)$std.error,4)
+
+# summary of fitted model after imputing missing data
 data.frame(Names = summary(mod_imp_long)$term, 
            estimate = summary(mod_imp_long)$estimate,
            "%95L" = low_ci,
            "95H" = high_ci,
            "p-value" = summary(mod_imp_long)$p.value)
-contrasts(asth$no2high)
-geeglm(log(fev1) ~ age*no2high + height + male, id = id, data = asth[complete.cases(asth),]) %>% summary()
+
